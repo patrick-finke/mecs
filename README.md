@@ -12,7 +12,7 @@ Inspired by [Esper](https://github.com/benmoran56/esper) and Sean Fisk's [ecs](h
     - [Managing entities](#mecs-entities)
     - [Implementing and managing components](#mecs-componentes)
     - [Implementing and running systems](#mecs-systems)
-    - [Useful patterns](#mecs-patterns)
+ - [Recipes](#recipes)
 
 <a name="changelog"/>
 
@@ -95,7 +95,7 @@ class Renderable():
     self.textureId = textureId
 ```
 
-Components are distinguished by their **component type**. It is important to note that entities can only contain up to one component of each type. While this allows for better performance when retrieving components, it may seem restrictive in some cases. If you are absolutely sure you need more than one component of a type attached to one entity, take a look at the section about [useful patterns](#mecs-patterns). To get the type of a component use the build-in `type()`:
+Components are distinguished by their **component type**. It is important to note that entities can only contain up to one component of each type. While this allows for better performance when retrieving components, it may seem restrictive in some cases. If you are absolutely sure you need more than one component of a type attached to one entity, take a look at the [recipes](#recipes). To get the type of a component use the build-in `type()`:
 
 ```python
 position = Position(15, 8)
@@ -217,7 +217,7 @@ scene.has(eid, Position) or scene.has(eid, Velocity) or scene.has(eid, Renderabl
 # => False
 ```
 
-Note that this does not make the entity id invalid. In fact, there is no way to invalidate a once valid id. In particular, there is no method to check if an entity is still 'alive'. If you need such behavior, visit the section about [useful patterns](#mecs-patterns).
+Note that this does not make the entity id invalid. In fact, there is no way to invalidate a once valid id. In particular, there is no method to check if an entity is still 'alive'. If you need such behavior, take a look at the [recipes](#recipes).
 
 #### 8. Viewing the archetype of an entity and all of its components using `scene.archetype(eid)` and `scene.components(eid)`.
 
@@ -331,15 +331,15 @@ scene.stop(*stopSystems)
 
 As with `scene.start()` this method should *not* be called multiple times, but instead once with all the necessary systems.
 
-<a name="mecs-patterns"/>
+<a name="recipes"/>
 
 ### Useful patterns
 
 This section collects common patterns that may be useful when using `mecs`.
 
-#### A basic update loop
+#### Update loop
 
-This pattern can be used to start, run and savely stop your scene with the appropriate systems.
+A basic update loop. The scene will be started, continuously updated and safely stopped (with Ctrl+C), using the appropriate systems.
 
 ```python
 # Your system instances go here.
@@ -362,9 +362,9 @@ finally:
   scene.stop(*stopSystems)
 ```
 
-#### Checking if an entity is alive
+#### Check if an entity is alive
 
-To check if an entity is alive, consider tagging it with an appropriate component when creating it and then checking for that component.
+In `mecs` there is no concept of 'alive' for an entity. An entity id can either be valid (in which case its components may be manipulated) or invalid (where attempted component manipulation results in an exception). A once valid entity id cannot be invalidated. To check if an entity is alive, consider tagging it with an `Alive` component when creating it and then checking for that component.
 
 ```python
 class Alive():
@@ -386,7 +386,7 @@ scene.has(eid, Alive)
 # => False
 ```
 
-#### Multiple components of the same type
+#### Add multiple components of the same type
 
 Often, adding multiple components of the same type can be avoided by carefully designing components and systems. If it is necessary, consider implementing a component that itself is a collection of components.
 
@@ -414,7 +414,7 @@ eid = scene.new(Health(100))
 
 # apply damage to the entity
 if not scene.has(eid, DamageStack):
-  scene.add(eid, DamageStack())
+  scene.set(eid, DamageStack())
 scene.get(eid, DamageStack).append(Damage(10))
 
 # resolve the damage
