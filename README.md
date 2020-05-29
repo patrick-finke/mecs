@@ -12,7 +12,7 @@ Inspired by [Esper](https://github.com/benmoran56/esper) and Sean Fisk's [ecs](h
     - [Managing entities](#mecs-entities)
     - [Implementing and managing components](#mecs-componentes)
     - [Implementing and running systems](#mecs-systems)
-    - [A basic update loop](#mecs-loop)
+    - [Useful patterns](#mecs-patterns)
 
 <a name="changelog"/>
 
@@ -44,9 +44,9 @@ For a full list of changes see [CHANGELOG.md](CHANGELOG.md).
 
 The Entity Component System (ECS) paradigm consists of three different concepts, namely **entities**, **components** and **systems**. These should be understood as follows:
 
-1. **Entities** are unique identifiers, labeling a set of components as belonging to a logical group.
+1. **Entities** are unique identifiers, labeling a set of components as belonging to a group.
 2. **Components** are plain data and implement no logic. They define the behavior of entities.
-3. **Systems** are logic that operates on entities and their components. They enforce the appropriate behavior of entities with certain component sets and are also able to change their behavior by adding, removing and mutating components.
+3. **Systems** are logic that operates on entities and their component, enforcing the appropriate behavior of entities with certain component types. Moreover, they are able to add and remove components from entities or mutate the data of existing components, effectively changing the entities behavior.
 
 For more information about the ECS paradigm, visit the [Wikipedia article](https://en.wikipedia.org/wiki/Entity_component_system) or Sander Mertens' [ecs-faq](https://github.com/SanderMertens/ecs-faq).
 
@@ -68,6 +68,8 @@ Entities are nothing more than unique (integer) identifiers. To get hold of a pr
 ```python
 eid = scene.new()
 ```
+
+Note that there is no method to remove or invalidate an entity id. There are no drawbacks to this decision, as entities that do not have components consume no memory and there is no way practical way of running out of entity ids. Furthermore, it alleviates the problem where a reference to an entity id does point to a nonsensical entity, because the originally referenced entity was destroyed and the entity id was then reused.
 
 <a name="mecs-componentes"/>
 
@@ -93,7 +95,7 @@ class Renderable():
     self.textureId = textureId
 ```
 
-Components are distinguished by their **component type**. To get the type of a component use the build-in `type()`:
+Components are distinguished by their **component type**. It is important to note that entities can only contain up to one component of each type. While this allows for better performance when retrieving components, it may seem restrictive in some cases. If you are absolutely sure you need more than one component of a type attached to one entity, take a look at the section about [useful patterns](#mecs-patterns). To get the type of a component use the build-in `type()`:
 
 ```python
 position = Position(15, 8)
@@ -122,6 +124,8 @@ eid = scene.new()
 anotherEid = scene.new(Position(15, 8), Velocity(8, 15), Renderable(7))
 # => 1
 ```
+
+Raises `ValueError` if trying to set one or more components of the same type.
 
 #### 2. Setting components using `scene.set(eid, *comps)`.
 
@@ -158,9 +162,11 @@ scene.has(eid, Position, Renderable)
 # => False
 ```
 
+Raises `ValueError` is no component type is supplied to the method.
+
 #### 4. Getting single components using `scene.get(eid, comptype)`.
 
-Returns the entities component of the specified type, allowing the view or edit the component data.
+Returns the component of the specified type, allowing to view or edit the component data.
 
 ```python
 # move the entity by 10 units on the x-axis
@@ -172,7 +178,7 @@ velocity = scene.get(eid, Velocity)
 velocity.vx, velocity.vy = 0, 0
 ```
 
-Raises `ValueError` if the entity is missing a component of the specified type.
+Raises `ValueError` if the entity does not have a component of the requested type.
 
 #### 5. Getting multiple components at once using `scene.collect(eid, *comptypes)`.
 
@@ -185,11 +191,11 @@ position.x += 10
 velocity.vx, velocity.vy = 0, 0
 ```
 
-Raises `ValueError` if the entity is missing one or more components of the specified types.
+Raises `ValueError` if the entity is missing one or more components of the requested types.
 
 #### 6. Removing components using `scene.remove(eid, *comptype)`.
 
-Removes the components of the entity that are of the specified types.
+Removes the components of the specified types from the entity.
 
 ```python
 # remove the Position and the Velocity component
@@ -203,8 +209,7 @@ Raises `ValueError` if the entity is missing one or more components of the speci
 Removes all components of the entity.
 
 ```python
-scene.add(eid, Position(0, 0))
-scene.add(eid, Velocity(0, 0))
+scene.set(eid, Position(0, 0), Velocity(0, 0))
 
 scene.free(eid)
 
@@ -212,22 +217,23 @@ scene.has(eid, Position) or scene.has(eid, Velocity) or scene.has(eid, Renderabl
 # => False
 ```
 
-Note that this does not make the entity id invalid. In fact, there is no way to invalidate a once valid id. In particular, there is no method to check if an entity is still 'alive'. If you need such behavior, consider attaching an `Alive` component (that has no further data) to every entity that needs it and use `scene.has(eid, Alive)` to determine if the entity is alive.
+Note that this does not make the entity id invalid. In fact, there is no way to invalidate a once valid id. In particular, there is no method to check if an entity is still 'alive'. If you need such behavior, visit the section about [useful patterns](#mecs-patterns).
 
 #### 8. Viewing the archetype of an entity and all of its components using `scene.archetype(eid)` and `scene.components(eid)`.
 
 The **archetype** of an entity is the tuple of all component types that are attached to it.
 
 ```python
-scene.add(eid, Position(32, 64))
-scene.add(eid, Velocity(8, 16))
+scene.set(eid, Position(32, 64), Velocity(8, 16))
+
 scene.archetype(eid)
 # => (<class '__main__.Position'>, <class '__main__.Velocity'>)
+
 scene.components(eid)
 # => (<__main__.Position object at 0x000001EF0358D370>, <__main__.Velocity object at 0x000001EF035B47C0>)
 ```
 
-The result of `scene.archetype(eid)` is sorted, so comparisons of the form `scene.archetype(eid1) == scene.archetype(eid2)` are safe, but hardly necessary.
+The result of `scene.archetype(eid)` is sorted, so comparisons of the form `scene.archetype(eid1) == scene.archetype(eid2)` are possible, but hardly necessary.
 
 #### 9. Iterating over entities and components using `scene.select(*comptypes, exclude=None)`.
 
@@ -241,7 +247,7 @@ for eid, (pos, vel) in scene.select(Position, Velocity):
   pos.y += vel.vy * dt
 ```
 
-Iterating over entities that have a certain set of components is one of the most important tasks in the ECS paradigm. Usually, this is done by systems to efficiently apply their logic to the appropriate entities. For more examples, see the section about systems.
+Iterating over entities that have a certain set of components is one of the most important tasks in the ECS paradigm. Usually, this is done by systems to efficiently apply their logic to the appropriate entities. For more examples, see the section about [systems](#mecs-systems).
 
 #### 10. Staying save using the `CommandBuffer`.
 
@@ -325,11 +331,15 @@ scene.stop(*stopSystems)
 
 As with `scene.start()` this method should *not* be called multiple times, but instead once with all the necessary systems.
 
-<a name="mecs-loop"/>
+<a name="mecs-patterns"/>
 
-### A basic update loop
+### Useful patterns
 
-When trying to write the main loop of your program you may use this pattern.
+This section collects common patterns that may be useful when using `mecs`.
+
+#### A basic update loop
+
+This pattern can be used to start, run and savely stop your scene with the appropriate systems.
 
 ```python
 # Your system instances go here.
@@ -350,4 +360,76 @@ except KeyboardInterrupt:
   pass
 finally:
   scene.stop(*stopSystems)
+```
+
+#### Checking if an entity is alive
+
+To check if an entity is alive, consider tagging it with an appropriate component when creating it and then checking for that component.
+
+```python
+class Alive():
+  """Every entity that is alive has one of these."""
+
+# create an entity that is alive
+scene = Scene()
+eid = scene.new(Alive())
+
+# Is the entity alive?
+scene.has(eid, Alive)
+# => True
+
+# 'destroy' the entity
+scene.free(eid)
+
+# Is the entity alive?
+scene.has(eid, Alive)
+# => False
+```
+
+#### Multiple components of the same type
+
+Often, adding multiple components of the same type can be avoided by carefully designing components and systems. If it is necessary, consider implementing a component that itself is a collection of components.
+
+```python
+class Dead():
+  """Every entity with this component is marked as dead."""
+  pass
+
+class Health():
+  """The health value of an entity. If this is zero the entity should die."""
+  def __init__(self, value):
+    self.value = value
+
+class DamageStack(list):
+  """A list of damage components."""
+
+class Damage():
+  """Damage that should be dealt to an entity."""
+  def __init__(self, amount):
+    self.amount = amount
+
+# setup an entity
+scene = Scene()
+eid = scene.new(Health(100))
+
+# apply damage to the entity
+if not scene.has(eid, DamageStack):
+  scene.add(eid, DamageStack())
+scene.get(eid, DamageStack).append(Damage(10))
+
+# resolve the damage
+class ResolveDamageSystem():
+  def onUpdate(self, scene, **kwargs):
+    with CommandBuffer(scene) as buffer:
+      for eid, (health, damage) in scene.select(Health, DamageStack):
+        # apply all the damage
+        health.value -= sum(dmg.amount for dmg in damage)
+
+        # if the entity has no health left, set the death flag
+        if health.value <= 0:
+          health.value = 0
+          buffer.add(eid, Dead())
+
+        # the damage stack has been processed, remove it
+        buffer.remove(eid, DamageStack)
 ```
